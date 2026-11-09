@@ -19,5 +19,11 @@ gcc -m32 -O3 -march=pentium-m -mfpmath=387 -fno-strict-aliasing -fPIC -shared $I
 	-lm -Dstricmp=strcasecmp -Dstrnicmp=strncasecmp
 gcc -m32 -O1 $INC -o "$OUT/pm_diff" "$ROOT/tests/pm/pm_diff.c" -ldl -lm
 cp "$TFC_SO" "$OUT/tfc.so"
+# Valve's tfc.so keeps PM_* and pmove in .symtab only; hand their offsets over.
+sym() { nm "$OUT/tfc.so" | awk -v n="$1" '$3==n {print "0x"$1; exit}'; }
+anchor=GiveFnptrsToDll
+PM_SYMTAB="$anchor=$(sym $anchor)"
+for n in PM_Init PM_Move PM_FlyMove pmove; do v=$(sym $n); echo "tfc.so $n=$v"; PM_SYMTAB="$PM_SYMTAB,$n=$v"; done
+export PM_SYMTAB
 cd "$(dirname "$TFC_SO")/../.."   # tfc.so may want to find its neighbours
 PM_TOL=${PM_TOL:-0.01} LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}" "$OUT/pm_diff" "$OUT/tfc.so" "$OUT/libpm_tfcc.so" "${1:-300}" "${2:-300}"

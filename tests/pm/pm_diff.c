@@ -50,6 +50,41 @@ typedef struct
 	const char *name;
 } pmlib_t;
 
+/* Symbols that are only in .symtab (not exported) can be supplied as
+   PM_SYMTAB="anchor=0xOFF,PM_Init=0xOFF,...", offsets from `nm`; anchor is
+   an exported symbol used to find the load base. */
+static void *lookup( void *h, const char *name )
+{
+	void *p = dlsym( h, name );
+	const char *tab = getenv( "PM_SYMTAB" );
+	if ( p || !tab )
+		return p;
+	char buf[1024];
+	strncpy( buf, tab, sizeof( buf ) - 1 );
+	buf[sizeof( buf ) - 1] = 0;
+	unsigned long anchor_off = 0, want_off = 0;
+	char anchor[128] = "";
+	for ( char *tok = strtok( buf, "," ); tok; tok = strtok( NULL, "," ) )
+	{
+		char *eq = strchr( tok, '=' );
+		if ( !eq )
+			continue;
+		*eq = 0;
+		unsigned long off = strtoul( eq + 1, NULL, 16 );
+		if ( !anchor[0] )
+		{
+			strncpy( anchor, tok, sizeof( anchor ) - 1 );
+			anchor_off = off;
+		}
+		else if ( !strcmp( tok, name ) )
+			want_off = off;
+	}
+	void *a = anchor[0] ? dlsym( h, anchor ) : NULL;
+	if ( !a || !want_off )
+		return NULL;
+	return (char *)a - anchor_off + want_off;
+}
+
 static int load_lib( pmlib_t *l, const char *path )
 {
 	l->name = path;
@@ -59,13 +94,13 @@ static int load_lib( pmlib_t *l, const char *path )
 		fprintf( stderr, "dlopen %s: %s\n", path, dlerror() );
 		return 0;
 	}
-	l->Init = (PM_Init_t)dlsym( l->h, "PM_Init" );
-	l->Move = (PM_Move_t)dlsym( l->h, "PM_Move" );
-	l->FlyMove = (PM_FlyMove_t)dlsym( l->h, "PM_FlyMove" );
-	l->ppmove = (playermove_t **)dlsym( l->h, "pmove" );
+	l->Init = (PM_Init_t)lookup( l->h, "PM_Init" );
+	l->Move = (PM_Move_t)lookup( l->h, "PM_Move" );
+	l->FlyMove = (PM_FlyMove_t)lookup( l->h, "PM_FlyMove" );
+	l->ppmove = (playermove_t **)lookup( l->h, "pmove" );
 	if ( !l->Init || !l->Move || !l->FlyMove || !l->ppmove )
 	{
-		fprintf( stderr, "%s: missing symbols\n", path );
+		fprintf( stderr, "%s: missing symbols (Init %p Move %p FlyMove %p pmove %p)\n", path, (void *)l->Init, (void *)l->Move, (void *)l->FlyMove, (void *)l->ppmove );
 		return 0;
 	}
 	return 1;
@@ -465,7 +500,8 @@ static int run_scenario( pmlib_t *A, pmlib_t *B, unsigned seed, int frames, cons
 
 		if ( frames_differ( &pa, &pb ) )
 		{
-			if ( verbose && diverged == 0 )
+			static int printed;
+			if ( verbose && diverged == 0 && printed++ < 20 )
 				fprintf( stderr, "  seed %u frame %d: A org(%.6f %.6f %.6f) vel(%.6f %.6f %.6f) | B org(%.6f %.6f %.6f) vel(%.6f %.6f %.6f)\n", seed, f, pa.origin[0], pa.origin[1], pa.origin[2], pa.velocity[0], pa.velocity[1], pa.velocity[2], pb.origin[0], pb.origin[1], pb.origin[2], pb.velocity[0], pb.velocity[1], pb.velocity[2] );
 			diverged++;
 			/* resync so later frames are still compared meaningfully */
