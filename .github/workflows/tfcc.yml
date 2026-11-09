@@ -1,0 +1,167 @@
+name: TFCC
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      map_seconds:
+        description: "Seconds of bot play per map in the server matrix"
+        default: "45"
+
+env:
+  TFC_FIXES_REF: v1.2.0
+  OTFC_MOVEFIX_URL: https://officialtfc.win/static/fixes/otfc-movefix-0.3.zip
+
+jobs:
+  linux:
+    name: Linux build + unit gates
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib g++-multilib cmake
+      - name: Fetch SDL2 headers
+        # The client only needs SDL2 headers (SDL is loaded at runtime from the
+        # engine). libsdl2-dev:i386 conflicts with the runner's amd64 glib dev
+        # packages, so use the upstream headers instead.
+        run: |
+          git clone --depth 1 --branch release-2.30.x https://github.com/libsdl-org/SDL build/sdl
+          mkdir -p build/sdl-include && ln -sfn ../sdl/include build/sdl-include/SDL2
+      - name: Build GoldSrc client (client.so)
+        run: |
+          export CPATH="$PWD/build/sdl-include"
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=toolchains/i386-linux-gnu.cmake \
+            -DCMAKE_BUILD_TYPE=Release -DGOLDSOURCE_SUPPORT=ON -DGOLDSOURCE_DEFAULT_FLAGS=ON -DBUILD_MENU=OFF
+          cmake --build build -j"$(nproc)"
+      - name: Fetch metamod-p SDK, tfc_fixes_mm, pickup config
+        run: |
+          git clone --depth 1 https://github.com/Bots-United/metamod-p build/metamod-p
+          git clone --depth 1 --branch "$TFC_FIXES_REF" https://github.com/lazydaydreamer12-collab/tfc_fixes_mm build/tfc_fixes_mm
+          git clone --depth 1 https://github.com/ededdneddyfan/tfc-pickup-server-configuration build/pickup
+      - name: Build tfcc_mm
+        run: make -C server/tfcc_mm METAMOD_SDK="$PWD/build/metamod-p"
+      - name: Build tfc_fixes_mm
+        run: make -C build/tfc_fixes_mm -f Makefile.linux SDK="$PWD/build/metamod-p" tfc_fixes_mm_mm_i386.so
+      - name: Compile selftest AMXX plugin
+        run: |
+          cp tests/server/tfcc_selftest.sma build/pickup/addons/amxmodx/scripting/
+          cd build/pickup/addons/amxmodx/scripting
+          chmod +x amxxpc && ./amxxpc tfcc_selftest.sma -otfcc_selftest.amxx
+      - name: "Gate: movement differential test (stock-identical unless server opts in)"
+        run: tests/pm/run.sh origin/main 1500 300
+      - name: "Gate: client ABI / user-message check"
+        run: tests/abi/check.sh build/cl_dll/client.so
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp build/cl_dll/client.so out/
+          cp server/tfcc_mm/tfcc_mm_i386.so out/
+          cp build/tfc_fixes_mm/tfc_fixes_mm_mm_i386.so out/
+          cp build/tfc_fixes_mm/configs/tfc_fixes.ini out/
+          cp build/pickup/addons/amxmodx/scripting/tfcc_selftest.amxx out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfcc-linux
+          path: out/
+
+  windows:
+    name: Windows build (client.dll)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Build
+        run: |
+          cmake -A Win32 -S . -B build -DGOLDSOURCE_SUPPORT=ON -DBUILD_MENU=OFF
+          cmake --build build --config Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfcc-windows
+          path: build/cl_dll/Release/client.dll
+
+  server-matrix:
+    name: Server regression matrix (stock vs TFCC)
+    needs: linux
+    runs-on: ubuntu-24.04
+    env:
+      HAS_CONTENT: ${{ secrets.TFCC_CONTENT_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfcc-linux
+          path: artifacts
+      - name: Install 32-bit runtime
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y lib32gcc-s1 lib32stdc++6 unzip
+      - name: Cache HLDS
+        uses: actions/cache@v4
+        with:
+          path: ~/hlds
+          key: hlds-tfc-v1
+      - name: Install HLDS + TFC (steamcmd)
+        run: |
+          if [ ! -x ~/hlds/hlds_linux ]; then
+            mkdir -p ~/steamcmd && cd ~/steamcmd
+            curl -sSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz
+            # app 90 often needs several passes before it completes
+            for i in 1 2 3 4; do
+              ./steamcmd.sh +force_install_dir ~/hlds +login anonymous \
+                +app_set_config 90 mod tfc +app_update 90 validate +quit && [ -f ~/hlds/tfc/dlls/tfc.so ] && break
+            done
+          fi
+          ls ~/hlds/tfc/maps | head
+      - name: "Prediction parity vs real tfc.so (informational)"
+        # Runs the movement fuzz with Valve's tfc.so as the baseline. Any
+        # divergence is a place where tf15-client-based clients (TFCC
+        # included) predict differently from the stock server.
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y gcc-multilib >/dev/null
+          TFC_SO=~/hlds/tfc/dlls/tfc.so tests/pm/vs_tfcso.sh 300 300
+      - name: Fetch OTFC movefix (optional)
+        continue-on-error: true
+        run: |
+          curl -fsSL "$OTFC_MOVEFIX_URL" -o movefix.zip && unzip -o movefix.zip -d movefix
+          f=$(find movefix -name 'otfc_movefix_mm_i386.so' | head -1); [ -n "$f" ] && cp "$f" artifacts/
+          # ramp-fix parity reference: movefix's clip-plane handling (compare with pm_shared PM_FlyMove)
+          sed -n '/^int PM_FlyMove/,/^}/p' movefix/*/source/sdk/pm_shared/pm_shared.c || true
+          grep -n -i 'ramp' movefix/*/source/src/movefix.cpp | head -60 || true
+      - name: Fetch server config overlay
+        run: git clone --depth 1 https://github.com/ededdneddyfan/tfc-pickup-server-configuration overlay
+      - name: Add private regression content (optional)
+        if: env.HAS_CONTENT == 'true'
+        env:
+          CONTENT_TOKEN: ${{ secrets.TFCC_CONTENT_TOKEN }}
+          CONTENT_REPO: ${{ vars.TFCC_CONTENT_REPO }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${CONTENT_TOKEN}@github.com/${CONTENT_REPO}" content
+          cp -a content/server/. overlay/ 2>/dev/null || true
+      - name: Run matrix
+        env:
+          MAP_SECONDS: ${{ github.event.inputs.map_seconds || '45' }}
+        run: |
+          export HLDS=~/hlds OVERLAY="$PWD/overlay" ARTIFACTS="$PWD/artifacts" OUT="$PWD/matrix-results"
+          tests/server/run_matrix.sh
+      - name: Summary
+        if: always()
+        run: cat matrix-results/report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matrix-results
+          path: matrix-results/

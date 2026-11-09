@@ -1,0 +1,45 @@
+# Entry points the GoldSrc engine looks up in client.so / client.dll.
+# Every one of these must be exported by the TFCC client. If a stock client
+# binary is supplied (STOCK_CLIENT=...), its full export list is checked too.
+Initialize
+HUD_VidInit
+HUD_Init
+HUD_Redraw
+HUD_UpdateClientData
+HUD_Reset
+HUD_PlayerMove
+HUD_PlayerMoveInit
+HUD_PlayerMoveTexture
+IN_ActivateMouse
+IN_DeactivateMouse
+IN_MouseEvent
+IN_ClearStates
+IN_Accumulate
+CL_CreateMove
+CL_IsThirdPerson
+CL_CameraOffset
+KB_Find
+CAM_Think
+V_CalcRefdef
+HUD_AddEntity
+HUD_CreateEntities
+HUD_DrawNormalTriangles
+HUD_DrawTransparentTriangles
+HUD_StudioEvent
+HUD_PostRunCmd
+HUD_Shutdown
+HUD_TxferLocalOverrides
+HUD_ProcessPlayerState
+HUD_TxferPredictionData
+Demo_ReadBuffer
+HUD_ConnectionlessPacket
+HUD_GetHullBounds
+HUD_Frame
+HUD_Key_Event
+HUD_TempEntUpdate
+HUD_GetUserEntity
+HUD_VoiceStatus
+HUD_DirectorMessage
+HUD_GetStudioModelInterface
+CreateInterface
+# HUD_ChatInputPosition is optional (engine checks for NULL) and not exported by tf15-client.

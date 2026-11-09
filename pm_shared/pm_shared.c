@@ -840,6 +840,19 @@ PM_FlyMove
 The basic solid body movement clip that slides along multiple planes
 ============
 */
+/*
+============
+PM_TFCC_RampFix
+
+TFCC: true when the server has enabled the ramp fix for this player
+(physinfo key "tcrf" = 1). Stock servers never set it.
+============
+*/
+static qboolean PM_TFCC_RampFix( void )
+{
+	return atoi( pmove->PM_Info_ValueForKey( pmove->physinfo, "tcrf" ) ) == 1 ? true : false;
+}
+
 int PM_FlyMove( void )
 {
 	int bumpcount, numbumps;
@@ -937,6 +950,29 @@ int PM_FlyMove( void )
 			VectorCopy( vec3_origin, pmove->velocity );
 			//Con_DPrintf( "Too many planes 4\n" );
 			break;
+		}
+
+		// TFCC: ramp fix (opt-in by the server via the "tcrf" physinfo key).
+		// Mirrors the OTFC movefix 0.3 server code exactly so prediction
+		// matches the server: hitting a plane already hit this move is the
+		// 1/32-unit contact margin on a slope, not a corner. Counting it twice
+		// makes the crease below zero the velocity (the "ramp bug"); instead
+		// nudge off the plane and keep sliding. tfcc_mm publishes the key only
+		// while otfc_mf_enable and otfc_mf_rampfix are on. Without the key this
+		// block is skipped and movement is stock.
+		if ( PM_TFCC_RampFix() )
+		{
+			for ( i = 0; i < numplanes; i++ )
+			{
+				if ( DotProduct( trace.plane.normal, planes[i] ) > 0.99 )
+					break;
+			}
+			if ( i < numplanes )
+			{
+				VectorAdd( trace.plane.normal, pmove->velocity, pmove->velocity );
+				VectorCopy( pmove->velocity, original_velocity );
+				continue;
+			}
 		}
 
 		// Set up next clipping plane

@@ -1,0 +1,15 @@
+// TFC Competitive Edition (TFCC)
+// Uses all content (maps, models, sprites, sounds, wads) from tfc/ via fallback_dir.
+game "TFC Competitive Edition"
+url_info "https://github.com/ededdneddyfan/tfcc"
+url_dl ""
+version "0.1"
+size "0"
+svonly "0"
+cldll "1"
+type "multiplayer_only"
+fallback_dir "tfc"
+mpentity "info_player_teamspawn"
+gamedll "dlls\tfc.dll"
+gamedll_linux "dlls/tfc.so"
+secure "1"

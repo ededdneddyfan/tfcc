@@ -1,5 +1,6 @@
 name: Build
-on: [ push, pull_request ]
+# Upstream tf15-client packaging (Android/Xash builds). TFCC CI lives in tfcc.yml.
+on: [ workflow_dispatch ]
 
 jobs:
   android:
