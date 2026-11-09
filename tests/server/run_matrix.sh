@@ -36,6 +36,13 @@ FATAL_RE='FATAL ERROR|Sys_Error|Host_Error|Segmentation fault|Aborted|core dumpe
 ERROR_RE='[Ee]rror|[Ff]ailed|[Cc]ouldn.t|[Cc]an.t |not found|[Bb]ad load|[Mm]issing|Warning: |overflow|Overflow'
 normalize() { sed -E 's/[0-9]{2}:[0-9]{2}:[0-9]{2}//g; s/0x[0-9a-fA-F]+/0xADDR/g; s/[0-9]+\.[0-9]+ (sec|ms)/N \1/g'; }
 
+# HLDS crashes at startup unless it finds steamclient.so here.
+mkdir -p "$HOME/.steam/sdk32"
+[ -e "$HOME/.steam/sdk32/steamclient.so" ] || ln -sf "$HLDS/steamclient.so" "$HOME/.steam/sdk32/steamclient.so"
+
+# append a line to a file that may lack a trailing newline
+append_line() { [ -s "$2" ] && [ -n "$(tail -c1 "$2")" ] && echo >> "$2"; echo "$1" >> "$2"; }
+
 [ -f "$TFC/liblist.gam.orig" ] || cp "$TFC/liblist.gam" "$TFC/liblist.gam.orig"
 [ -d "$TFC/.pristine_addons" ] || { mkdir -p "$TFC/.pristine_addons"; cp -a "$TFC/addons" "$TFC/.pristine_addons/" 2>/dev/null || true; }
 
@@ -49,21 +56,19 @@ setup_profile() {
 	local mmini=$TFC/addons/metamod/plugins.ini
 	local amxini=$TFC/addons/amxmodx/configs/plugins.ini
 	cp "$ARTIFACTS/tfcc_selftest.amxx" "$TFC/addons/amxmodx/plugins/"
-	grep -q tfcc_selftest "$amxini" || echo "tfcc_selftest.amxx" >> "$amxini"
+	grep -q tfcc_selftest "$amxini" || append_line "tfcc_selftest.amxx" "$amxini"
 	if [ "$prof" = tfcc ]; then
 		mkdir -p "$TFC/addons/tfcc_mm" "$TFC/addons/tfc_fixes_mm"
 		cp "$ARTIFACTS/tfcc_mm_i386.so" "$TFC/addons/tfcc_mm/"
 		cp "$ARTIFACTS/tfc_fixes_mm_mm_i386.so" "$TFC/addons/tfc_fixes_mm/"
 		[ -f "$ARTIFACTS/tfc_fixes.ini" ] && cp "$ARTIFACTS/tfc_fixes.ini" "$TFC/addons/tfc_fixes_mm/"
-		{
-			echo "linux addons/tfc_fixes_mm/tfc_fixes_mm_mm_i386.so"
-			if [ -f "$ARTIFACTS/otfc_movefix_mm_i386.so" ]; then
-				mkdir -p "$TFC/addons/otfc_movefix"
-				cp "$ARTIFACTS/otfc_movefix_mm_i386.so" "$TFC/addons/otfc_movefix/"
-				echo "linux addons/otfc_movefix/otfc_movefix_mm_i386.so"
-			fi
-			echo "linux addons/tfcc_mm/tfcc_mm_i386.so"
-		} >> "$mmini"
+		append_line "linux addons/tfc_fixes_mm/tfc_fixes_mm_mm_i386.so" "$mmini"
+		if [ -f "$ARTIFACTS/otfc_movefix_mm_i386.so" ]; then
+			mkdir -p "$TFC/addons/otfc_movefix"
+			cp "$ARTIFACTS/otfc_movefix_mm_i386.so" "$TFC/addons/otfc_movefix/"
+			append_line "linux addons/otfc_movefix/otfc_movefix_mm_i386.so" "$mmini"
+		fi
+		append_line "linux addons/tfcc_mm/tfcc_mm_i386.so" "$mmini"
 		sed -i -E 's/^(BugFixesTFC\.amxx)/;\1 ; replaced by tfc_fixes_mm/' "$amxini"
 	fi
 }
@@ -121,5 +126,15 @@ for m in "${maps[@]}"; do
 	echo "| $m | $( [ "$sdone" = 1 ] && echo ok || echo 'no finish') | $( [ "$tdone" = 1 ] && echo ok || echo 'no finish') | $verdict | $notes |" >> "$report"
 done
 cat "$report"
+# Show the logs of the first failing map in the job output (artifact storage
+# isn't always reachable from where results are read).
+first=$(awk -F'|' '$5 ~ /FAIL/ {gsub(/ /,"",$2); print $2; exit}' "$report")
+if [ -n "$first" ]; then
+	for prof in stock tfcc; do
+		echo "===== $prof/$first.log (exit $(cat "$OUT/$prof/$first.log.exit" 2>/dev/null)) ====="
+		grep -E 'META|AMX|tfcc|TFCC|TFC Fixes|OTFC|rror|ault' "$OUT/$prof/$first.log" | head -60
+		echo "----- tail -----"; tail -40 "$OUT/$prof/$first.log"
+	done
+fi
 [ $fail = 0 ] && echo "RESULT: PASS" || echo "RESULT: FAIL"
 exit $fail
