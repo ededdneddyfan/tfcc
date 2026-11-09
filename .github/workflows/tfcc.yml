@@ -2,6 +2,7 @@ name: TFCC
 
 on:
   push:
+    branches: [ main ]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -124,6 +125,11 @@ jobs:
             done
           fi
           ls ~/hlds/tfc/maps | head
+      - name: "Diagnostic: tfc.so PM_FlyMove (reflect-branch check vs HL SDK)"
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y binutils >/dev/null
+          objdump -d --no-show-raw-insn -M intel --disassemble=PM_FlyMove ~/hlds/tfc/dlls/tfc.so | head -400
       - name: Fetch OTFC movefix (optional)
         continue-on-error: true
         run: |

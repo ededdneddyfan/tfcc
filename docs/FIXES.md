@@ -51,7 +51,7 @@ profile disables it).
 
 | Fix | Where | Client change? |
 |---|---|---|
-| Ramp bug: a slope hit twice in one move counts as a corner and zeroes speed (`otfc_mf_rampfix`) | S otfc_movefix 0.3 **and** C | **Yes.** With movefix on, the server no longer zeroes speed but stock client prediction still does, so players get a prediction error (snap back) every time it triggers. TFCC's `PM_FlyMove` ignores planes already in the clip list, gated by physinfo `tcrf=1`, which `tfcc_mm` publishes only while `otfc_mf_enable` and `otfc_mf_rampfix` are on. Verified by `tests/pm` gate 2. **Parity with movefix's exact code still has to be confirmed** against its source (see TESTING.md). |
+| Ramp bug: a slope hit twice in one move counts as a corner and zeroes speed (`otfc_mf_rampfix`) | S otfc_movefix 0.3 **and** C | **Yes.** With movefix on, the server no longer zeroes speed but stock client prediction still does, so players get a prediction error (snap back) every time it triggers. TFCC's `PM_FlyMove` mirrors movefix 0.3's code line for line (a plane with dot > 0.99 to one already hit this move: add its normal to velocity and continue), gated by physinfo `tcrf=1`, which `tfcc_mm` publishes only while `otfc_mf_enable` and `otfc_mf_rampfix` are on. Verified by `tests/pm` gate 2. |
 | Ramp-save chat message (`otfc_mf_announce`) | S otfc_movefix | No. |
 | Instant unstick | Planned by OTFC (server) | No (server-side position fix). |
 | Corners slide instead of stopping (vote) | Planned by OTFC | Would need the same physinfo-gated mirror as the ramp fix once it exists. |
@@ -64,3 +64,15 @@ profile disables it).
 ## Inherited from upstream tf15-client
 
 `b312e02 client: fix blood splatters when healing red team teammates` is already in the base.
+
+## Open question: movefix's base movement vs TFC's
+
+OTFC movefix runs Valve's **Half-Life SDK** `pm_shared`. In its `PM_FlyMove`,
+the airborne "reflect" branch only runs for the first plane hit
+(`numplanes == 1 && ...`, as in HL SDK 2.3). tf15-client's reverse-engineered
+TFC movement does not have that `numplanes == 1` condition. If tf15-client is
+right about `tfc.so`, then movefix changes multi-plane airborne movement for
+everyone, beyond the ramp fix, and TFC clients (stock or TFCC) would mispredict
+those moves. Needs checking against `tfc.so` disassembly (OTFC's own
+"bit-identical with fixes off" test suggests tfc.so may match the SDK, in which
+case tf15-client's copy is the one that's wrong and should be fixed too).

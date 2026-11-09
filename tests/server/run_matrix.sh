@@ -34,7 +34,7 @@ mkdir -p "$OUT"
 
 FATAL_RE='FATAL ERROR|Sys_Error|Host_Error|Segmentation fault|Aborted|core dumped|Trigger in clipping list|SV_StartSound|ED_Alloc: no free edicts'
 ERROR_RE='[Ee]rror|[Ff]ailed|[Cc]ouldn.t|[Cc]an.t |not found|[Bb]ad load|[Mm]issing|Warning: |overflow|Overflow'
-normalize() { sed -E 's/[0-9]{2}:[0-9]{2}:[0-9]{2}//g; s/0x[0-9a-fA-F]+/0xADDR/g; s/[0-9]+\.[0-9]+ (sec|ms)/N \1/g'; }
+normalize() { sed -E 's/^ *\[ *[0-9]+\]//; s/\( *[0-9]+\)//g; s/[0-9]{2}:[0-9]{2}:[0-9]{2}//g; s/0x[0-9a-fA-F]+/0xADDR/g; s/[0-9]+\.[0-9]+ (sec|ms)/N \1/g'; }
 
 # HLDS crashes at startup unless it finds steamclient.so here.
 mkdir -p "$HOME/.steam/sdk32"
@@ -81,7 +81,10 @@ run_map() {
 		./hlds_linux -game tfc -norestart -nomaster +sv_lan 1 +maxplayers 16 +port $((27015 + RANDOM % 1000)) \
 		+localinfo tfcc_selftest 1 +localinfo tfcc_selftest_seconds "$SECONDS_PER_MAP" \
 		+map "$map" < /dev/null > "$log" 2>&1 )
-	echo $? > "$log.exit"
+	local rc=$?
+	echo $rc > "$log.exit"
+	# Steam init occasionally fails on a cold runner; that is the environment,
+	# not the map or TFCC. Retry such runs (up to twice).
 }
 
 maps=("$@")
@@ -93,7 +96,15 @@ echo "maps: ${#maps[@]}"
 
 for prof in stock tfcc; do
 	setup_profile $prof
-	for m in "${maps[@]}"; do echo "[$prof] $m"; run_map $prof "$m"; done
+	for m in "${maps[@]}"; do
+		echo "[$prof] $m"
+		for attempt in 1 2 3; do
+			run_map $prof "$m"
+			# Steam init sometimes fails on a cold runner: environment, not map/TFCC
+			grep -q 'Unable to initialize Steam' "$OUT/$prof/$m.log" || break
+			echo "  steam init failed, retrying ($attempt)"; sleep 2
+		done
+	done
 done
 
 # restore

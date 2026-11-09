@@ -953,33 +953,31 @@ int PM_FlyMove( void )
 		}
 
 		// TFCC: ramp fix (opt-in by the server via the "tcrf" physinfo key).
-		// When the same surface is hit twice in one move (typically a ramp
-		// re-hit at fraction 0), stock code adds it to the plane list a second
-		// time; with two identical planes the "crease" below has a zero cross
-		// product and the player's speed is zeroed. Ignore surfaces that are
-		// already in the list. The server-side half of this fix is the OTFC
-		// movefix metamod plugin (otfc_mf_rampfix); the key is published by
-		// tfcc_mm only while that fix is active, so prediction matches the
-		// server. Without the key this block is a no-op and movement is stock.
-		if ( numplanes > 0 && PM_TFCC_RampFix() )
+		// Mirrors the OTFC movefix 0.3 server code exactly so prediction
+		// matches the server: hitting a plane already hit this move is the
+		// 1/32-unit contact margin on a slope, not a corner. Counting it twice
+		// makes the crease below zero the velocity (the "ramp bug"); instead
+		// nudge off the plane and keep sliding. tfcc_mm publishes the key only
+		// while otfc_mf_enable and otfc_mf_rampfix are on. Without the key this
+		// block is skipped and movement is stock.
+		if ( PM_TFCC_RampFix() )
 		{
 			for ( i = 0; i < numplanes; i++ )
 			{
-				if ( VectorCompare( trace.plane.normal, planes[i] ) )
+				if ( DotProduct( trace.plane.normal, planes[i] ) > 0.99 )
 					break;
 			}
-		}
-		else
-		{
-			i = numplanes;
+			if ( i < numplanes )
+			{
+				VectorAdd( trace.plane.normal, pmove->velocity, pmove->velocity );
+				VectorCopy( pmove->velocity, original_velocity );
+				continue;
+			}
 		}
 
-		if ( i == numplanes )
-		{
-			// Set up next clipping plane
-			VectorCopy( trace.plane.normal, planes[numplanes] );
-			numplanes++;
-		}
+		// Set up next clipping plane
+		VectorCopy( trace.plane.normal, planes[numplanes] );
+		numplanes++;
 
 		// modify original_velocity so it parallels all of the clip planes
 		//
