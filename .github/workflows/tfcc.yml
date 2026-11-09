@@ -125,11 +125,14 @@ jobs:
             done
           fi
           ls ~/hlds/tfc/maps | head
-      - name: "Diagnostic: tfc.so PM_FlyMove (reflect-branch check vs HL SDK)"
+      - name: "Prediction parity vs real tfc.so (informational)"
+        # Runs the movement fuzz with Valve's tfc.so as the baseline. Any
+        # divergence is a place where tf15-client-based clients (TFCC
+        # included) predict differently from the stock server.
         continue-on-error: true
         run: |
-          sudo apt-get install -y binutils >/dev/null
-          objdump -d --no-show-raw-insn -M intel --disassemble=PM_FlyMove ~/hlds/tfc/dlls/tfc.so | head -400
+          sudo apt-get install -y gcc-multilib >/dev/null
+          TFC_SO=~/hlds/tfc/dlls/tfc.so tests/pm/vs_tfcso.sh 300 300
       - name: Fetch OTFC movefix (optional)
         continue-on-error: true
         run: |

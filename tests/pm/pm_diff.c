@@ -362,6 +362,24 @@ static const char *g_physinfo_variants_compat[] = {
 	"\\slj\\1\\tfc\\1",
 };
 
+/* PM_TOL=0 (default): bit-exact comparison. PM_TOL>0: tolerance in units
+   (and units/s) for comparing builds made by different compilers, e.g. the
+   real tfc.so against ours, where x87 rounding differs. */
+static float g_tol;
+static int vec_differ( const float *a, const float *b )
+{
+	if ( g_tol <= 0 )
+		return memcmp( a, b, sizeof( vec3_t ) ) != 0;
+	for ( int i = 0; i < 3; i++ )
+		if ( fabsf( a[i] - b[i] ) > g_tol )
+			return 1;
+	return 0;
+}
+static int frames_differ( const playermove_t *a, const playermove_t *b )
+{
+	return vec_differ( a->origin, b->origin ) || vec_differ( a->velocity, b->velocity ) || a->onground != b->onground || a->flags != b->flags || a->usehull != b->usehull || vec_differ( a->view_ofs, b->view_ofs );
+}
+
 /* run identical scenario on both libs, return number of diverging frames */
 static int run_scenario( pmlib_t *A, pmlib_t *B, unsigned seed, int frames, const char *physinfo, int verbose )
 {
@@ -445,7 +463,7 @@ static int run_scenario( pmlib_t *A, pmlib_t *B, unsigned seed, int frames, cons
 			pm->oldbuttons = cmd.buttons;
 		}
 
-		if ( memcmp( pa.origin, pb.origin, sizeof( vec3_t ) ) || memcmp( pa.velocity, pb.velocity, sizeof( vec3_t ) ) || pa.onground != pb.onground || pa.flags != pb.flags || pa.usehull != pb.usehull || memcmp( pa.view_ofs, pb.view_ofs, sizeof( vec3_t ) ) )
+		if ( frames_differ( &pa, &pb ) )
 		{
 			if ( verbose && diverged == 0 )
 				fprintf( stderr, "  seed %u frame %d: A org(%.6f %.6f %.6f) vel(%.6f %.6f %.6f) | B org(%.6f %.6f %.6f) vel(%.6f %.6f %.6f)\n", seed, f, pa.origin[0], pa.origin[1], pa.origin[2], pa.velocity[0], pa.velocity[1], pa.velocity[2], pb.origin[0], pb.origin[1], pb.origin[2], pb.velocity[0], pb.velocity[1], pb.velocity[2] );
@@ -517,6 +535,9 @@ int main( int argc, char **argv )
 		return 2;
 	}
 	g_worldmodel = calloc( 1, 4096 );
+	g_tol = getenv( "PM_TOL" ) ? (float)atof( getenv( "PM_TOL" ) ) : 0.0f;
+	if ( g_tol > 0 )
+		printf( "tolerance mode: %g\n", g_tol );
 	if ( !load_lib( &A, argv[1] ) || !load_lib( &B, argv[2] ) )
 		return 2;
 	{
@@ -565,7 +586,7 @@ int main( int argc, char **argv )
 		int ra = flymove_case( &A, seed, "\\tfc\\1", va );
 		int rb = flymove_case( &B, seed, "\\tfc\\1", vb );
 		flymove_case( &B, seed, "\\tfc\\1\\tcrf\\1", vb2 );
-		if ( ra != rb || memcmp( va, vb, sizeof( vec3_t ) ) )
+		if ( ra != rb || vec_differ( va, vb ) )
 			b_mismatch_nofix++;
 		if ( VectorLength( va ) == 0.0f )
 			a_zero++;
