@@ -129,6 +129,8 @@ jobs:
         run: |
           curl -fsSL "$OTFC_MOVEFIX_URL" -o movefix.zip && unzip -o movefix.zip -d movefix
           f=$(find movefix -name 'otfc_movefix_mm_i386.so' | head -1); [ -n "$f" ] && cp "$f" artifacts/
+          # ramp-fix parity reference: movefix's clip-plane handling (compare with pm_shared PM_FlyMove)
+          grep -rn -B4 -A14 'planes\[numplanes\]\|numplanes++' movefix --include='*.c' --include='*.cpp' | head -200 || true
       - name: Fetch server config overlay
         run: git clone --depth 1 https://github.com/ededdneddyfan/tfc-pickup-server-configuration overlay
       - name: Add private regression content (optional)

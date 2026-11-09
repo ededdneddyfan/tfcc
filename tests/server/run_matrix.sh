@@ -69,7 +69,8 @@ setup_profile() {
 }
 
 run_map() {
-	local prof=$1 map=$2 log=$OUT/$prof/$map.log
+	local prof=$1 map=$2
+	local log=$OUT/$prof/$map.log
 	mkdir -p "$OUT/$prof"
 	( cd "$HLDS" && LD_LIBRARY_PATH=".:$HLDS" timeout --signal=KILL $((SECONDS_PER_MAP + 60)) \
 		./hlds_linux -game tfc -norestart -nomaster +sv_lan 1 +maxplayers 16 +port $((27015 + RANDOM % 1000)) \
