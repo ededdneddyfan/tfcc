@@ -26,9 +26,17 @@ jobs:
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y gcc-multilib g++-multilib cmake libsdl2-dev:i386 libfontconfig-dev:i386
+          sudo apt-get install -y gcc-multilib g++-multilib cmake
+      - name: Fetch SDL2 headers
+        # The client only needs SDL2 headers (SDL is loaded at runtime from the
+        # engine). libsdl2-dev:i386 conflicts with the runner's amd64 glib dev
+        # packages, so use the upstream headers instead.
+        run: |
+          git clone --depth 1 --branch release-2.30.x https://github.com/libsdl-org/SDL build/sdl
+          mkdir -p build/sdl-include && ln -sfn ../sdl/include build/sdl-include/SDL2
       - name: Build GoldSrc client (client.so)
         run: |
+          export CPATH="$PWD/build/sdl-include"
           cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=toolchains/i386-linux-gnu.cmake \
             -DCMAKE_BUILD_TYPE=Release -DGOLDSOURCE_SUPPORT=ON -DGOLDSOURCE_DEFAULT_FLAGS=ON -DBUILD_MENU=OFF
           cmake --build build -j"$(nproc)"
