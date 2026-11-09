@@ -840,6 +840,19 @@ PM_FlyMove
 The basic solid body movement clip that slides along multiple planes
 ============
 */
+/*
+============
+PM_TFCC_RampFix
+
+TFCC: true when the server has enabled the ramp fix for this player
+(physinfo key "tcrf" = 1). Stock servers never set it.
+============
+*/
+static qboolean PM_TFCC_RampFix( void )
+{
+	return atoi( pmove->PM_Info_ValueForKey( pmove->physinfo, "tcrf" ) ) == 1 ? true : false;
+}
+
 int PM_FlyMove( void )
 {
 	int bumpcount, numbumps;
@@ -939,9 +952,34 @@ int PM_FlyMove( void )
 			break;
 		}
 
-		// Set up next clipping plane
-		VectorCopy( trace.plane.normal, planes[numplanes] );
-		numplanes++;
+		// TFCC: ramp fix (opt-in by the server via the "tcrf" physinfo key).
+		// When the same surface is hit twice in one move (typically a ramp
+		// re-hit at fraction 0), stock code adds it to the plane list a second
+		// time; with two identical planes the "crease" below has a zero cross
+		// product and the player's speed is zeroed. Ignore surfaces that are
+		// already in the list. The server-side half of this fix is the OTFC
+		// movefix metamod plugin (otfc_mf_rampfix); the key is published by
+		// tfcc_mm only while that fix is active, so prediction matches the
+		// server. Without the key this block is a no-op and movement is stock.
+		if ( numplanes > 0 && PM_TFCC_RampFix() )
+		{
+			for ( i = 0; i < numplanes; i++ )
+			{
+				if ( VectorCompare( trace.plane.normal, planes[i] ) )
+					break;
+			}
+		}
+		else
+		{
+			i = numplanes;
+		}
+
+		if ( i == numplanes )
+		{
+			// Set up next clipping plane
+			VectorCopy( trace.plane.normal, planes[numplanes] );
+			numplanes++;
+		}
 
 		// modify original_velocity so it parallels all of the clip planes
 		//

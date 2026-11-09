@@ -1,3 +1,27 @@
+# TFCC: Team Fortress Classic Competitive Edition
+
+TFCC is a GoldSrc mod built on [tf15-client](https://github.com/FWGS/tf15-client)
+that fixes TFC bugs which can't be fixed by server plugins alone, while staying
+100% compatible with everything that works on stock TFC (maps, AMXX plugins,
+models, sprites, sounds).
+
+* [docs/FIXES.md](docs/FIXES.md): every known bug (officialtfc.win, tfc_fixes_mm 1.2.0), where it is fixed, and what changed in the client.
+* [docs/TESTING.md](docs/TESTING.md): the regression pipeline and the custom files needed for it.
+* `server/tfcc_mm`: the server companion metamod plugin that lets the server opt clients into client-side fixes.
+* `tfcc_dist/`, `scripts/package_tfcc.sh`: the `tfcc` mod folder (`fallback_dir "tfc"`).
+
+Build for GoldSrc (Linux):
+
+```
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=toolchains/i386-linux-gnu.cmake -DGOLDSOURCE_SUPPORT=ON -DGOLDSOURCE_DEFAULT_FLAGS=ON -DBUILD_MENU=OFF
+cmake --build build
+tests/pm/run.sh && tests/abi/check.sh build/cl_dll/client.so
+```
+
+Upstream tf15-client README follows.
+
+---
+
 # TF15-Client [![Build Status](https://github.com/Velaron/tf15-client/actions/workflows/build.yml/badge.svg)](https://github.com/Velaron/tf15-client/actions) <img align="right" width="128" height="128" src="https://github.com/Velaron/tf15-client/raw/master/android/app/src/main/ic_launcher-playstore.png" alt="TF15-Client" />
 Team Fortress Classic reverse-engineered.
 

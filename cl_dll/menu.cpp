@@ -40,6 +40,8 @@ int CHudMenu::Init( void )
 
 	HOOK_MESSAGE( ShowMenu );
 
+	m_pCvarMenuFix = CVAR_CREATE( "cl_tfcc_menufix", "1", FCVAR_ARCHIVE );
+
 	InitHUDData();
 
 	return 1;
@@ -60,6 +62,22 @@ void CHudMenu::Reset( void )
 
 int CHudMenu::VidInit( void )
 {
+	// TFCC: close any menu left over from the previous map.
+	// A text menu that is open (display time -1) when the level changes never
+	// gets its "close" ShowMenu, so stock clients keep drawing it on the next
+	// map and keep routing number keys to it. VidInit runs once per map load,
+	// before any user message of the new level is parsed, so this can only
+	// ever close a menu from the old level; menus a plugin sends on the new
+	// level (even during connect) are untouched.
+	if ( !m_pCvarMenuFix || m_pCvarMenuFix->value != 0.0f )
+	{
+		m_fMenuDisplayed = 0;
+		m_bitsValidSlots = 0;
+		m_flShutoffTime = -1;
+		m_iFlags &= ~HUD_ACTIVE;
+		g_szMenuString[0] = 0;
+		Reset();
+	}
 	return 1;
 }
 
